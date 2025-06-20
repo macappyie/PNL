@@ -16,101 +16,114 @@ st.title("📅 Kite Daily Trade Tracker")
 
 
 
-
-
-# Fetch order history
-st.info("🔄 Fetching trades from Kite...")
+# ===== Fetch trades =====
 try:
-    orders = kite.orders()
+    st.info("🔄 Fetching trade data...")
     trades = kite.trades()
+    instruments = kite.instruments()
 
     df = pd.DataFrame(trades)
     if df.empty:
-        st.warning("No trades found in your account.")
+        st.warning("⚠️ No trades found.")
         st.stop()
 
-    df = df[['order_id', 'instrument_token', 'product', 'quantity', 'price', 'transaction_type', 'trade_id', 'exchange_timestamp']]
+    # Clean data
+    df = df[['order_id', 'instrument_token', 'quantity', 'price', 'transaction_type', 'trade_id', 'exchange_timestamp']]
     df.columns = df.columns.str.lower()
     df['exchange_timestamp'] = pd.to_datetime(df['exchange_timestamp'])
     df.sort_values('exchange_timestamp', inplace=True)
 
-    # Instrument lookup
-    instrument_df = pd.read_csv("https://api.kite.trade/instruments")  # Cached or downloaded once
-    instrument_df = instrument_df[['instrument_token', 'tradingsymbol']]
-    df = df.merge(instrument_df, on='instrument_token', how='left')
+    # Add symbol name
+    inst_df = pd.DataFrame(instruments)[['instrument_token', 'tradingsymbol']]
+    df = df.merge(inst_df, on='instrument_token', how='left')
 
-    trades_list = []
+    # ===== FIFO BUY-SELL matching =====
+    matched_trades = []
     for symbol in df['tradingsymbol'].unique():
-        buy_queue = []
         symbol_df = df[df['tradingsymbol'] == symbol]
+        buy_queue = []
 
         for _, row in symbol_df.iterrows():
             qty = row['quantity']
             price = row['price']
+            txn = row['transaction_type']
             time = row['exchange_timestamp']
 
-            if row['transaction_type'] == 'BUY':
-                buy_queue.append({'quantity': qty, 'price': price, 'timestamp': time})
-            elif row['transaction_type'] == 'SELL':
+            if txn == 'BUY':
+                buy_queue.append({'qty': qty, 'price': price, 'time': time})
+            elif txn == 'SELL':
                 sell_qty = qty
                 sell_price = price
                 while sell_qty > 0 and buy_queue:
-                    buy_trade = buy_queue[0]
-                    match_qty = min(sell_qty, buy_trade['quantity'])
+                    buy = buy_queue[0]
+                    match_qty = min(sell_qty, buy['qty'])
 
-                    pnl = (sell_price - buy_trade['price']) * match_qty
-                    trades_list.append({
+                    pnl = (sell_price - buy['price']) * match_qty
+                    matched_trades.append({
                         'symbol': symbol,
-                        'buy_price': buy_trade['price'],
+                        'buy_price': buy['price'],
                         'sell_price': sell_price,
-                        'quantity': match_qty,
+                        'qty': match_qty,
                         'pnl': pnl,
-                        'buy_time': buy_trade['timestamp'],
+                        'buy_time': buy['time'],
                         'sell_time': time
                     })
 
-                    # Update queue
-                    buy_trade['quantity'] -= match_qty
-                    if buy_trade['quantity'] == 0:
+                    # Update qty
+                    buy['qty'] -= match_qty
+                    if buy['qty'] == 0:
                         buy_queue.pop(0)
                     sell_qty -= match_qty
 
-    pnl_df = pd.DataFrame(trades_list)
+    pnl_df = pd.DataFrame(matched_trades)
 
     if pnl_df.empty:
-        st.warning("No matched trades found.")
+        st.warning("⚠️ No matched BUY/SELL trades found.")
         st.stop()
 
-    # Summary
+    # ===== Summary =====
     total_trades = len(pnl_df)
-    winning = len(pnl_df[pnl_df['pnl'] > 0])
-    losing = len(pnl_df[pnl_df['pnl'] < 0])
-    total_profit = pnl_df[pnl_df['pnl'] > 0]['pnl'].sum()
-    total_loss = pnl_df[pnl_df['pnl'] < 0]['pnl'].sum()
-    win_rate = (winning / total_trades) * 100 if total_trades else 0
+    wins = pnl_df[pnl_df['pnl'] > 0]
+    losses = pnl_df[pnl_df['pnl'] < 0]
+    win_count = len(wins)
+    loss_count = len(losses)
+    total_profit = wins['pnl'].sum()
+    total_loss = losses['pnl'].sum()
+    net_total = total_profit + total_loss
+    win_rate = (win_count / total_trades) * 100 if total_trades else 0
 
-    st.subheader("📊 Realized P&L Summary")
+    # ===== Metrics =====
+    st.subheader("📊 Trade Summary")
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("🔁 Total Trades", total_trades)
-    c2.metric("✅ Winning", winning)
-    c3.metric("❌ Losing", losing)
+    c1.metric("Total Trades", total_trades)
+    c2.metric("✅ Profitable", win_count)
+    c3.metric("❌ Loss-Making", loss_count)
     c4.metric("🏆 Win Rate", f"{win_rate:.2f}%")
-    c5.metric("💰 Net P&L", f"₹{total_profit + total_loss:,.2f}")
+    c5.metric("📈 Net P&L", f"₹{net_total:,.2f}", delta="Profit" if net_total >= 0 else "Loss")
 
-    # Bar Chart
-    st.subheader("📉 Trade-wise P&L")
-    fig = go.Figure(go.Bar(
+    # ===== Bar Chart =====
+    st.subheader("📉 Trade-wise Realized P&L")
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
         x=pnl_df['sell_time'],
         y=pnl_df['pnl'],
-        marker_color=['green' if x > 0 else 'red' for x in pnl_df['pnl']]
+        marker_color=['green' if x > 0 else 'red' for x in pnl_df['pnl']],
+        hovertemplate='Symbol: %{text}<br>P&L: ₹%{y:,.2f}<extra></extra>',
+        text=pnl_df['symbol']
     ))
-    fig.update_layout(xaxis_title="Sell Time", yaxis_title="Realized P&L", height=400)
+    fig.update_layout(
+        xaxis_title="Sell Time",
+        yaxis_title="Realized P&L",
+        height=400,
+        plot_bgcolor='white'
+    )
     st.plotly_chart(fig, use_container_width=True)
 
-    # Trade table
-    st.subheader("📋 Matched Trade Details")
-    st.dataframe(pnl_df)
+    # ===== Trade Table =====
+    st.subheader("📋 Matched Trade Log")
+    pnl_df['pnl'] = pnl_df['pnl'].round(2)
+    pnl_df['qty'] = pnl_df['qty'].astype(int)
+    st.dataframe(pnl_df[['symbol', 'buy_time', 'buy_price', 'sell_time', 'sell_price', 'qty', 'pnl']])
 
 except Exception as e:
-    st.error(f"⚠️ Failed to fetch or process trades: {e}")
-
+    st.error(f"❌ Error fetching or processing trades: {e}")
