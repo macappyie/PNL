@@ -18,7 +18,7 @@ st.title("📅 Kite Daily Trade Tracker")
 
 
 try:
-    # 🔍 Fetch trades
+    # 🧾 Fetch trades
     trades = kite.trades()
     df = pd.DataFrame(trades)
 
@@ -30,13 +30,13 @@ try:
         df['pnl'] = df['average_price'] * df['quantity']
         df['pnl'] = df['pnl'].where(df['transaction_type'] == 'SELL', -df['pnl'])
 
-        # 🔎 Daily P&L summary
+        # 📅 Daily Summary
         daily_summary = df.groupby('date').agg(
             Trades=('order_id', 'nunique'),
             Net_PnL=('pnl', 'sum')
         ).reset_index()
 
-        st.subheader("📋 Daily Summary")
+        st.subheader("📋 Daily Trade Summary")
         st.dataframe(daily_summary.sort_values(by='date', ascending=False), use_container_width=True)
 
         # 📊 Daily P&L Chart
@@ -57,28 +57,23 @@ try:
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        # 🎯 Filter BUY trades
-        buy_trades = df[df['transaction_type'] == 'BUY']
-        total_trades = len(buy_trades)
+        # 📊 Trade Performance Summary
+        profitable_trades = df[df['pnl'] > 0]
+        loss_making_trades = df[df['pnl'] < 0]
+        total_trades = len(df)
+        profitable_count = len(profitable_trades)
+        loss_count = len(loss_making_trades)
+        win_rate = (profitable_count / total_trades) * 100 if total_trades else 0
 
-        # 💰 Use SELL trades to determine profit/loss
-        profitable_sells = df[(df['transaction_type'] == 'SELL') & (df['pnl'] > 0)]
-        loss_making_sells = df[(df['transaction_type'] == 'SELL') & (df['pnl'] < 0)]
-        profitable_count = len(profitable_sells)
-        loss_count = len(loss_making_sells)
-
-        win_rate = (profitable_count / (profitable_count + loss_count)) * 100 if (profitable_count + loss_count) > 0 else 0
-
-        # 🧾 Trade Summary Metrics
-        st.subheader("📊 BUY Trade Performance Summary")
+        st.subheader("📊 Trade Performance Summary")
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("🛒 Total BUY Trades", f"{total_trades}")
-        col2.metric("✅ Profitable (SELLs)", f"{profitable_count}")
-        col3.metric("❌ Loss-Making (SELLs)", f"{loss_count}")
+        col1.metric("Total Trades", f"{total_trades}")
+        col2.metric("✅ Profitable", f"{profitable_count}")
+        col3.metric("❌ Loss-Making", f"{loss_count}")
         col4.metric("🏆 Win Rate", f"{win_rate:.2f}%")
 
-        # 📉 Bar Chart
-        st.subheader("📉 Profitable vs Loss-Making Trades (from SELLs)")
+        # 📉 Bar Chart: Profitable vs Loss-Making
+        st.subheader("📉 Profitable vs Loss-Making Trades")
         fig_bar = go.Figure(data=[
             go.Bar(name='Profitable', x=['Profitable'], y=[profitable_count], marker_color='green'),
             go.Bar(name='Loss-Making', x=['Loss-Making'], y=[loss_count], marker_color='red')
@@ -88,7 +83,7 @@ try:
             height=350,
             showlegend=False,
             plot_bgcolor='white',
-            title='SELL Outcomes After BUY Trades'
+            title='Trade Outcome Distribution'
         )
         st.plotly_chart(fig_bar, use_container_width=True)
 
