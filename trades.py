@@ -17,81 +17,100 @@ st.title("📅 Kite Daily Trade Tracker")
 
 
 
+
+# Fetch order history
+st.info("🔄 Fetching trades from Kite...")
 try:
-    # 🔍 Fetch trades
+    orders = kite.orders()
     trades = kite.trades()
+
     df = pd.DataFrame(trades)
-
     if df.empty:
-        st.warning("No trades found.")
-    else:
-        # 📦 Preprocess
-        df['date'] = pd.to_datetime(df['exchange_timestamp']).dt.date
-        df['pnl'] = df['average_price'] * df['quantity']
-        df['pnl'] = df['pnl'].where(df['transaction_type'] == 'SELL', -df['pnl'])
+        st.warning("No trades found in your account.")
+        st.stop()
 
-        # 🔎 Daily P&L summary
-        daily_summary = df.groupby('date').agg(
-            Trades=('order_id', 'nunique'),
-            Net_PnL=('pnl', 'sum')
-        ).reset_index()
+    df = df[['order_id', 'instrument_token', 'product', 'quantity', 'price', 'transaction_type', 'trade_id', 'exchange_timestamp']]
+    df.columns = df.columns.str.lower()
+    df['exchange_timestamp'] = pd.to_datetime(df['exchange_timestamp'])
+    df.sort_values('exchange_timestamp', inplace=True)
 
-        st.subheader("📋 Daily Summary")
-        st.dataframe(daily_summary.sort_values(by='date', ascending=False), use_container_width=True)
+    # Instrument lookup
+    instrument_df = pd.read_csv("https://api.kite.trade/instruments")  # Cached or downloaded once
+    instrument_df = instrument_df[['instrument_token', 'tradingsymbol']]
+    df = df.merge(instrument_df, on='instrument_token', how='left')
 
-        # 📊 Daily P&L Chart
-        st.subheader("📈 Daily Net P&L Chart")
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            x=daily_summary['date'],
-            y=daily_summary['Net_PnL'],
-            marker_color=['green' if x >= 0 else 'red' for x in daily_summary['Net_PnL']],
-            hovertemplate='Date: %{x}<br>Net P&L: ₹%{y:.2f}<extra></extra>'
-        ))
-        fig.update_layout(
-            xaxis_title="Date",
-            yaxis_title="Net P&L",
-            height=400,
-            plot_bgcolor='white',
-            xaxis_tickangle=-45
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    trades_list = []
+    for symbol in df['tradingsymbol'].unique():
+        buy_queue = []
+        symbol_df = df[df['tradingsymbol'] == symbol]
 
-        # 🎯 Filter BUY trades
-        buy_trades = df[df['transaction_type'] == 'BUY']
-        total_trades = len(buy_trades)
+        for _, row in symbol_df.iterrows():
+            qty = row['quantity']
+            price = row['price']
+            time = row['exchange_timestamp']
 
-        # 💰 Use SELL trades to determine profit/loss
-        profitable_sells = df[(df['transaction_type'] == 'SELL') & (df['pnl'] > 0)]
-        loss_making_sells = df[(df['transaction_type'] == 'SELL') & (df['pnl'] < 0)]
-        profitable_count = len(profitable_sells)
-        loss_count = len(loss_making_sells)
+            if row['transaction_type'] == 'BUY':
+                buy_queue.append({'quantity': qty, 'price': price, 'timestamp': time})
+            elif row['transaction_type'] == 'SELL':
+                sell_qty = qty
+                sell_price = price
+                while sell_qty > 0 and buy_queue:
+                    buy_trade = buy_queue[0]
+                    match_qty = min(sell_qty, buy_trade['quantity'])
 
-        win_rate = (profitable_count / (profitable_count + loss_count)) * 100 if (profitable_count + loss_count) > 0 else 0
+                    pnl = (sell_price - buy_trade['price']) * match_qty
+                    trades_list.append({
+                        'symbol': symbol,
+                        'buy_price': buy_trade['price'],
+                        'sell_price': sell_price,
+                        'quantity': match_qty,
+                        'pnl': pnl,
+                        'buy_time': buy_trade['timestamp'],
+                        'sell_time': time
+                    })
 
-        # 🧾 Trade Summary Metrics
-        st.subheader("📊 BUY Trade Performance Summary")
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("🛒 Total BUY Trades", f"{total_trades}")
-        col2.metric("✅ Profitable (SELLs)", f"{profitable_count}")
-        col3.metric("❌ Loss-Making (SELLs)", f"{loss_count}")
-        col4.metric("🏆 Win Rate", f"{win_rate:.2f}%")
+                    # Update queue
+                    buy_trade['quantity'] -= match_qty
+                    if buy_trade['quantity'] == 0:
+                        buy_queue.pop(0)
+                    sell_qty -= match_qty
 
-        # 📉 Bar Chart
-        st.subheader("📉 Profitable vs Loss-Making Trades (from SELLs)")
-        fig_bar = go.Figure(data=[
-            go.Bar(name='Profitable', x=['Profitable'], y=[profitable_count], marker_color='green'),
-            go.Bar(name='Loss-Making', x=['Loss-Making'], y=[loss_count], marker_color='red')
-        ])
-        fig_bar.update_layout(
-            yaxis_title='Number of Trades',
-            height=350,
-            showlegend=False,
-            plot_bgcolor='white',
-            title='SELL Outcomes After BUY Trades'
-        )
-        st.plotly_chart(fig_bar, use_container_width=True)
+    pnl_df = pd.DataFrame(trades_list)
+
+    if pnl_df.empty:
+        st.warning("No matched trades found.")
+        st.stop()
+
+    # Summary
+    total_trades = len(pnl_df)
+    winning = len(pnl_df[pnl_df['pnl'] > 0])
+    losing = len(pnl_df[pnl_df['pnl'] < 0])
+    total_profit = pnl_df[pnl_df['pnl'] > 0]['pnl'].sum()
+    total_loss = pnl_df[pnl_df['pnl'] < 0]['pnl'].sum()
+    win_rate = (winning / total_trades) * 100 if total_trades else 0
+
+    st.subheader("📊 Realized P&L Summary")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("🔁 Total Trades", total_trades)
+    c2.metric("✅ Winning", winning)
+    c3.metric("❌ Losing", losing)
+    c4.metric("🏆 Win Rate", f"{win_rate:.2f}%")
+    c5.metric("💰 Net P&L", f"₹{total_profit + total_loss:,.2f}")
+
+    # Bar Chart
+    st.subheader("📉 Trade-wise P&L")
+    fig = go.Figure(go.Bar(
+        x=pnl_df['sell_time'],
+        y=pnl_df['pnl'],
+        marker_color=['green' if x > 0 else 'red' for x in pnl_df['pnl']]
+    ))
+    fig.update_layout(xaxis_title="Sell Time", yaxis_title="Realized P&L", height=400)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Trade table
+    st.subheader("📋 Matched Trade Details")
+    st.dataframe(pnl_df)
 
 except Exception as e:
-    st.error(f"⚠️ Error loading trades: {e}")
+    st.error(f"⚠️ Failed to fetch or process trades: {e}")
 
