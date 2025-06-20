@@ -12,3 +12,8 @@ pandas
 openpyxl
 plotly
 
+streamlit
+kiteconnect
+pandas
+plotly
+
