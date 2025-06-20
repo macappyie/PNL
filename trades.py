@@ -14,6 +14,8 @@ kite.set_access_token(ACCESS_TOKEN)
 st.set_page_config(page_title="Kite Daily P&L", layout="wide")
 st.title("📅 Kite Daily Trade Tracker")
 
+
+
 # 🧾 Fetch trades
 try:
     trades = kite.trades()
@@ -32,11 +34,11 @@ try:
             Net_PnL=('pnl', 'sum')
         ).reset_index()
 
-        # Display table
+        # 📋 Daily table
         st.subheader("📋 Daily Summary")
         st.dataframe(daily_summary.sort_values(by='date', ascending=False), use_container_width=True)
 
-        # Chart
+        # 📈 Daily bar chart
         st.subheader("📈 Daily Net P&L Chart")
         fig = go.Figure()
         fig.add_trace(go.Bar(
@@ -55,5 +57,5 @@ try:
         st.plotly_chart(fig, use_container_width=True)
 
 except Exception as e:
-    st.error(f"⚠️ Error loadi
+    st.error(f"⚠️ Error loading trades: {e}")
 
