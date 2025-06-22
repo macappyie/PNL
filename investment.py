@@ -47,14 +47,37 @@ df_summary = df_summary.sort_values(by=amount_col, ascending=False)
 
 # === Bar Chart ===
 st.subheader("📈 Total Investment by Investor")
+#fig = px.bar(
+#    df_summary,
+#    x=name_col,
+#    y=amount_col,
+#    title="Total Investment per Person",
+#    labels={name_col: "Investor", amount_col: "Total Invested"},
+#    text_auto=True
+#)
+
+
+# Convert amount to lakhs
+df_summary["Amount (in Lakhs)"] = df_summary[amount_col] / 1_00_000
+
 fig = px.bar(
     df_summary,
     x=name_col,
-    y=amount_col,
-    title="Total Investment per Person",
-    labels={name_col: "Investor", amount_col: "Total Invested"},
-    text_auto=True
+    y="Amount (in Lakhs)",
+    title="Total Investment per Person (in ₹ Lakhs)",
+    labels={name_col: "Investor", "Amount (in Lakhs)": "Investment (₹ Lakhs)"},
+    text_auto='.2f'
 )
+fig.update_layout(xaxis_tickangle=-45)
+
+
+
+fig.update_yaxes(tickprefix="₹", ticksuffix=" L")
+
+
+
+
+
 fig.update_layout(xaxis_tickangle=-45)
 st.plotly_chart(fig, use_container_width=True)
 
