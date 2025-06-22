@@ -1,136 +1,77 @@
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
-import requests
+import os
 
-# === Configuration ===
-TELEGRAM_BOT_TOKEN = "8060596624:AAEy0fb4tMTGtBJBywF-fHXmwjIYhVDQzjs"
-REMINDER_DAYS = 7
+# --- Setup page ---
+st.set_page_config(page_title="Investor Summary", layout="wide")
+st.title("📊 Investment Summary by Person")
 
-# === Page Setup ===
-st.set_page_config(page_title="Investor Tracker", layout="wide")
-st.title("📈 Monthly Interest & Refund Tracker")
+# --- Load file automatically ---
+FILE_NAME = "INVESTMENT.xlsx"
 
-# === Load Data ===
+if not os.path.exists(FILE_NAME):
+    st.error("❌ File 'INVESTMENT.xlsx' not found in the current folder.")
+    st.stop()
+
 @st.cache_data
-def load_data(path="INVESTMENT.xlsx"):
-    df = pd.read_excel(path)
-    df.columns = df.columns.str.strip().str.upper()
+def load_data(file_path):
+    xls = pd.ExcelFile(file_path)
+    df = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
     return df
 
-try:
-    df_data = load_data()
-except:
-    st.error("❌ Could not load 'INVESTMENT.xlsx'. Make sure it's present and well-formatted.")
+df = load_data(FILE_NAME)
+df.columns = df.columns.str.strip()  # Clean column names
+
+# --- Auto-select name and amount columns ---
+text_cols = df.select_dtypes(include='object').columns.tolist()
+num_cols = df.select_dtypes(include='number').columns.tolist()
+
+if not text_cols or not num_cols:
+    st.error("The file must contain at least one text column (like Name) and one number column (like Amount).")
     st.stop()
 
-required_cols = {"NAME", "AMOUNT", "ROI", "MONTHS_PAID", "START_DATE", "CHAT_ID"}
-if not required_cols.issubset(df_data.columns):
-    st.error(f"❌ Missing columns: {required_cols - set(df_data.columns)}")
-    st.stop()
+name_col = "NAME" if "NAME" in df.columns else text_cols[0]
+amount_col = "DEPOSIT" if "DEPOSIT" in df.columns else num_cols[0]
 
-# === Select Investor ===
-investor = st.selectbox("👤 Select Investor", df_data["NAME"].unique())
-row = df_data[df_data["NAME"] == investor].iloc[0]
+# --- Prepare data ---
+df_clean = df[[name_col, amount_col]].dropna()
+df_clean = df_clean[df_clean[name_col].str.strip() != ""]  # Remove empty names
+df_grouped = df_clean.groupby(name_col, as_index=False)[amount_col].sum()
 
-# === Extract Fields ===
-amount = row["AMOUNT"]
-roi = row["ROI"]
-months_paid = int(row["MONTHS_PAID"])
-monthly_profit = round((amount * roi / 100) / 12)
-total_interest = monthly_profit * 12
-total_paid = months_paid * monthly_profit
-chat_id = str(row["CHAT_ID"]).strip()
+# Convert to lakhs
+df_grouped["Amount (in Lakhs)"] = df_grouped[amount_col] / 1_00_000
 
-# === Dates ===
-investment_date = pd.to_datetime(row["START_DATE"], dayfirst=True, errors='coerce')
-refund_date = investment_date + pd.DateOffset(months=12) if pd.notnull(investment_date) else pd.NaT
-refund_str = refund_date.strftime('%d-%b-%Y') if pd.notnull(refund_date) else "N/A"
-
-# === Monthly Payout Table ===
-df_months = pd.DataFrame({
-    "Month": list(range(1, 13)),
-    "Amount Paid": [monthly_profit if m <= months_paid else 0 for m in range(1, 13)]
+# --- Add Net Total row ---
+total_lakhs = df_grouped["Amount (in Lakhs)"].sum()
+df_total = pd.DataFrame({
+    name_col: ["🧮 Net Total"],
+    "Amount (in Lakhs)": [total_lakhs]
 })
-df_months["Status"] = df_months["Amount Paid"].apply(lambda x: "✅ Paid" if x > 0 else "⏳ Upcoming")
-df_months.loc[12] = [13, amount, "🔚 Refund"]
 
-# === Chart ===
-fig = px.bar(
-    df_months,
-    x="Month",
-    y="Amount Paid",
-    color="Status",
-    text="Amount Paid",
-    color_discrete_map={"✅ Paid": "green", "⏳ Upcoming": "lightgray", "🔚 Refund": "orange"},
-    title=f"📊 Monthly Interest & Refund for {investor}"
+# Combine data for chart
+df_chart = pd.concat([df_grouped[[name_col, "Amount (in Lakhs)"]], df_total], ignore_index=True)
+
+# --- Plot bar chart ---
+fig_bar = px.bar(
+    df_chart,
+    x=name_col,
+    y="Amount (in Lakhs)",
+    title="Total Investment per Person (in ₹ Lakhs)",
+    labels={name_col: "Investor", "Amount (in Lakhs)": "Investment (₹ Lakhs)"},
+    text_auto='.2f'
 )
-fig.update_layout(xaxis_title="Month", yaxis_title="₹ Amount", yaxis_tickprefix="₹", xaxis=dict(tickmode='linear'))
-fig.update_xaxes(tickvals=list(range(1, 14)), ticktext=[str(m) if m <= 12 else "Refund" for m in range(1, 14)])
-st.plotly_chart(fig, use_container_width=True)
+fig_bar.update_layout(xaxis_tickangle=-45)
+fig_bar.update_yaxes(tickprefix="₹", ticksuffix=" L")
 
-# === Summary ===
-st.subheader("🧾 Summary")
-st.markdown(f"""
-- 💼 **Investor:** `{investor}`  
-- 💰 **Amount Invested:** ₹{amount:,.0f}  
-- 📈 **Annual ROI:** {roi}%  
-- 💸 **Monthly Payout:** ₹{monthly_profit:,.0f}  
-- ✅ **Months Paid:** `{months_paid}` / 12  
-- 💵 **Total Paid So Far:** ₹{total_paid:,.0f}  
-- 🔁 **Interest Expected (1 Yr):** ₹{total_interest:,.0f}
-""")
+# Display chart
+st.plotly_chart(fig_bar, use_container_width=True)
 
-# === Refund Highlight ===
-st.markdown("---")
-st.subheader("🔚 Final Refund Details")
-st.info(f"""
-💰 **₹{amount:,.0f}** will be refunded to **{investor}**  
-📅 On **{refund_str}** (after 1-year lock-in from investment date)
-""")
+# --- Optional: Show table ---
+if st.checkbox("📋 Show Table"):
+    st.dataframe(df_grouped[[name_col, amount_col, "Amount (in Lakhs)"]].sort_values("Amount (in Lakhs)", ascending=False))
 
-# === Telegram Alerts ===
-def send_telegram_msg(chat_id, text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": 8108934088, "text": text, "parse_mode": "Markdown"}
-    try:
-        requests.post(url, json=payload)
-    except Exception as e:
-        st.warning(f"⚠️ Telegram failed: {e}")
-
-# Refund Reminder
-if pd.notnull(refund_date):
-    days_left = (refund_date - datetime.today()).days
-    if 0 <= days_left <= REMINDER_DAYS:
-        send_telegram_msg(
-            chat_id,
-            f"👋 Hey {investor}!\n\n🎯 Your ₹{amount:,.0f} refund is scheduled on *{refund_str}*\n"
-            f"⏰ That's just *{days_left} day{'s' if days_left > 1 else ''}* away!\n"
-            f"🪃 Sit tight — your money’s coming back!\n\n🤖 ~ Your Investment Bot"
-        )
-
-# Monthly Payout Alerts
-for i in range(months_paid):
-    pay_month = i + 1
-    pay_date = investment_date + pd.DateOffset(months=pay_month)
-    send_telegram_msg(
-        chat_id,
-        f"💸 *Month {pay_month} Payout Sent!*\n\n👤 *{investor}*\n💰 ₹{monthly_profit:,.0f}\n📆 {pay_date.strftime('%d-%b-%Y')}\n\n☕ Enjoy the chai & profits!\n\n🤖 ~ Your Bot"
-    )
-
-# Loss Alert
-days_since_investment = (datetime.today() - investment_date).days
-expected_months = min(days_since_investment // 30, 12)
-expected_paid = expected_months * monthly_profit
-actual_paid = months_paid * monthly_profit
-
-if actual_paid < expected_paid:
-    send_telegram_msg(
-        chat_id,
-        f"😅 Dear {investor},\n\nWe know it's a little red 📉 right now...\n\n"
-        f"💸 Received: ₹{actual_paid:,.0f}\n🧮 Expected: ₹{expected_paid:,.0f}\n\n"
-        f"🕰️ Hang tight — recovery is on its way! 🔁\n☀️ Good days ahead!\n\n🤖 ~ Friendly Profit Bot"
-    )
+# --- Optional: Download summary CSV ---
+csv = df_grouped[[name_col, "Amount (in Lakhs)"]].to_csv(index=False).encode("utf-8")
+st.download_button("📥 Download CSV", data=csv, file_name="investment_summary.csv", mime="text/csv")
 
