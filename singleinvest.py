@@ -3,57 +3,19 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 
-# ------------------------------
-# 🌈 Custom CSS Styling
-# ------------------------------
-st.markdown("""
-    <style>
-    .stApp {
-        background: linear-gradient(135deg, #f3f4f6, #dbeafe);
-        font-family: 'Segoe UI', sans-serif;
-    }
-    .stTitle {
-        font-size: 3em;
-        font-weight: 800;
-        color: #1f2937;
-        text-shadow: 1px 1px 1px #d1d5db;
-    }
-    .stMarkdown {
-        background: rgba(255, 255, 255, 0.9);
-        padding: 1.2em;
-        border-radius: 10px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-    }
-    .summary-box {
-        background-color: #ffffff;
-        padding: 1em 2em;
-        border-radius: 10px;
-        margin-bottom: 1em;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# ------------------------------
-# 📈 App Title
-# ------------------------------
+st.set_page_config(layout="wide")
 st.title("📈 Interest Payment Tracker (Single Investor)")
 
-# --- Investment Parameters ---
+# --- Static sample data ---
 investment_date = "10-Dec-24"
 amount_invested = 200000
 annual_roi = 36  # percent
 monthly_profit = 6000
-months_paid = 5
-months = list(range(1, 13))
+months_paid = 5  # already paid
 total_paid = months_paid * monthly_profit
+months = list(range(1, 13))
 
-# --- Calculate Dates ---
-investment_datetime = datetime.strptime(investment_date, "%d-%b-%y")
-final_refund_date = investment_datetime.replace(year=investment_datetime.year + 1)
-refund_str = final_refund_date.strftime("%d-%b-%Y")
-
-# --- Monthly Payouts DataFrame ---
+# --- Create DataFrame ---
 df_months = pd.DataFrame({
     "Month": months,
     "Pay Date": pd.date_range(start="10-Jan-2025", periods=12, freq='MS') + pd.DateOffset(days=9),
@@ -61,71 +23,54 @@ df_months = pd.DataFrame({
 })
 
 df_months["Status"] = df_months["Amount Paid"].apply(lambda x: "✅ Paid" if x > 0 else "⏳ Upcoming")
-df_months["Emoji"] = df_months["Status"].map({"✅ Paid": "📤", "⏳ Upcoming": "⏳"})
-df_months["Label"] = df_months.apply(lambda row: f"{row['Emoji']} ₹{row['Amount Paid']:,.0f}" if row['Amount Paid'] > 0 else row['Emoji'], axis=1)
 
-# --- Append Final Refund ---
-df_stacked = df_months.copy()
-df_stacked.loc[len(df_stacked)] = {
-    "Month": 13,
-    "Pay Date": final_refund_date,
-    "Amount Paid": amount_invested,
-    "Status": "🧾 Refund Principal",
-    "Emoji": "💸",
-    "Label": f"💸 ₹{amount_invested:,.0f}"
-}
+# --- Total values ---
+total_interest = monthly_profit * 12
+final_refund = amount_invested
 
-# ------------------------------
-# 📊 Bar Chart with Emojis
-# ------------------------------
+# --- Plot Bar Chart ---
 fig = px.bar(
-    df_stacked,
+    df_months,
     x="Month",
     y="Amount Paid",
     color="Status",
-    text="Label",
-    color_discrete_map={
-        "✅ Paid": "#22c55e",
-        "⏳ Upcoming": "#9ca3af",
-        "🧾 Refund Principal": "#3b82f6"
-    },
-    title="💸 Monthly Interest + Final Refund"
+    text="Amount Paid",
+    color_discrete_map={"✅ Paid": "green", "⏳ Upcoming": "lightgray"},
+    title="Monthly Interest Payouts"
 )
 
-fig.update_traces(textposition="outside")
 fig.update_layout(
     xaxis_title="Month",
     yaxis_title="₹ Amount",
     yaxis_tickprefix="₹",
-    yaxis_tickformat=",",
     xaxis=dict(tickmode='linear'),
-    plot_bgcolor="#ffffff",
-    paper_bgcolor="#ffffff",
-    showlegend=True,
-    transition=dict(duration=500)
-)
-fig.update_xaxes(
-    tickvals=list(range(1, 14)),
-    ticktext=[str(m) if m < 13 else "Refund" for m in range(1, 14)]
+    showlegend=True
 )
 
 st.plotly_chart(fig, use_container_width=True)
 
-# ------------------------------
-# 🧾 Summary Section
-# ------------------------------
-total_interest = monthly_profit * 12
-
+# --- Summary ---
 st.subheader("💰 Summary")
 st.markdown(f"""
-<div class="summary-box">
 - 📅 **Investment Date:** {investment_date}  
 - 💼 **Amount Invested:** ₹{amount_invested:,}  
 - 📈 **Annual ROI:** {annual_roi}%  
 - 💸 **Monthly Payout:** ₹{monthly_profit:,}  
 - ✅ **Paid Till Date:** ₹{total_paid:,}  
 - 🔁 **Total Interest (1 Year):** ₹{total_interest:,}  
-- 🧾 **Final Refund After Lock-In:** ₹{amount_invested:,} on **{refund_str}**  
-</div>
-""", unsafe_allow_html=True)
+- 🧾 **Final Refund After Lock-In:** ₹{final_refund:,}
+""")
+
+# --- Calculate Final Refund Date ---
+investment_datetime = datetime.strptime(investment_date, "%d-%b-%y")
+final_refund_date = investment_datetime.replace(year=investment_datetime.year + 1)
+refund_str = final_refund_date.strftime("%d-%b-%Y")
+
+# --- Show Refund Date Notice ---
+st.markdown("---")
+st.subheader("🔚 Final Refund Details")
+st.info(f"""
+💰 **₹{final_refund:,}** will be refunded  
+📅 On **{refund_str}** (End of Lock-In Period)
+""")
 
