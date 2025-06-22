@@ -36,7 +36,7 @@ fig = px.bar(
     color="Status",
     text="Amount Paid",
     color_discrete_map={"✅ Paid": "green", "⏳ Upcoming": "lightgray"},
-    title="📊 Monthly Interest Payouts"
+    title="Monthly Interest Payouts"
 )
 
 fig.update_layout(
@@ -73,20 +73,4 @@ st.info(f"""
 💰 **₹{final_refund:,}** will be refunded  
 📅 On **{refund_str}** (End of Lock-In Period)
 """)
-
-# --- 🥧 Pie Chart: Investment Distribution ---
-pie_data = pd.DataFrame({
-    "Category": ["✅ Paid Interest", "⏳ Remaining Interest", "💸 Refund Principal"],
-    "Amount": [total_paid, total_interest - total_paid, amount_invested]
-})
-
-pie_chart = px.pie(
-    pie_data,
-    names="Category",
-    values="Amount",
-    title="🥧 Investment Breakdown",
-    color_discrete_sequence=["#10b981", "#fbbf24", "#3b82f6"]
-)
-
-st.plotly_chart(pie_chart, use_container_width=True)
 
