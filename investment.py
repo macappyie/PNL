@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import plotly.express as px
 
 st.set_page_config(page_title="Investor Summary", layout="centered")
 
@@ -42,11 +43,20 @@ col = st.selectbox("Select identifier column (Name, Email, PAN, etc):", text_col
 df_clean = df[df[col].notnull()]
 df_clean = df_clean.drop_duplicates(subset=[col])
 
-# Show results
+# Count unique entries
+unique_counts = df_clean[col].value_counts().reset_index()
+unique_counts.columns = [col, "Count"]
+
+# Display Bar Chart
+st.subheader(f"📊 Bar Chart of Unique {col} Investors")
+fig = px.bar(unique_counts, x=col, y="Count", title=f"Unique {col} Investors")
+st.plotly_chart(fig, use_container_width=True)
+
+# Show results as text
 total = len(df_clean)
 st.success(f"✅ Total unique people who invested: **{total}**")
 
-# Optional: Show list
+# Optional: Show list of unique investors
 if st.checkbox("📋 Show unique investor list"):
     st.dataframe(df_clean[[col]].reset_index(drop=True))
 
