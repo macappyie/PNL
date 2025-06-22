@@ -1,8 +1,8 @@
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-import time
 
 st.set_page_config(layout="wide")
 st.title("📈 Interest Payment Tracker (Single Investor)")
@@ -29,40 +29,26 @@ df_months["Status"] = df_months["Amount Paid"].apply(lambda x: "✅ Paid" if x >
 total_interest = monthly_profit * 12
 final_refund = amount_invested
 
-# --- Animated Bar Chart ---
-st.subheader("📊 Monthly Payout Animation")
+# --- Plot Bar Chart ---
+fig = px.bar(
+    df_months,
+    x="Month",
+    y="Amount Paid",
+    color="Status",
+    text="Amount Paid",
+    color_discrete_map={"✅ Paid": "green", "⏳ Upcoming": "lightgray"},
+    title="📊 Monthly Interest Payouts"
+)
 
-df_anim = pd.DataFrame({
-    "Month": months,
-    "Amount Paid": [0]*12,
-    "Status": ["⏳ Upcoming"]*12
-})
+fig.update_layout(
+    xaxis_title="Month",
+    yaxis_title="₹ Amount",
+    yaxis_tickprefix="₹",
+    xaxis=dict(tickmode='linear'),
+    showlegend=True
+)
 
-placeholder = st.empty()
-
-if st.button("▶️ Play Animation"):
-    for i in range(months_paid):
-        df_anim.loc[i, "Amount Paid"] = monthly_profit
-        df_anim.loc[i, "Status"] = "✅ Paid"
-
-        fig_anim = px.bar(
-            df_anim,
-            x="Month",
-            y="Amount Paid",
-            color="Status",
-            text="Amount Paid",
-            color_discrete_map={"✅ Paid": "green", "⏳ Upcoming": "lightgray"},
-            title="💸 Interest Payout Progress"
-        )
-        fig_anim.update_layout(
-            yaxis_tickprefix="₹",
-            xaxis=dict(tickmode='linear'),
-            height=400
-        )
-        fig_anim.update_traces(textposition="outside")
-
-        placeholder.plotly_chart(fig_anim, use_container_width=True)
-        time.sleep(0.4)
+st.plotly_chart(fig, use_container_width=True)
 
 # --- Summary ---
 st.subheader("💰 Summary")
