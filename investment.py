@@ -3,17 +3,17 @@ import pandas as pd
 import plotly.express as px
 import os
 
-st.set_page_config(page_title="Investor Chart", layout="wide")
+# --- Setup page ---
+st.set_page_config(page_title="Investor Summary", layout="wide")
 st.title("📊 Investment Summary by Person")
 
-# === Auto-load file ===
+# --- Load file automatically ---
 FILE_NAME = "INVESTMENT.xlsx"
 
 if not os.path.exists(FILE_NAME):
     st.error("❌ File 'INVESTMENT.xlsx' not found in the current folder.")
     st.stop()
 
-# === Load Data ===
 @st.cache_data
 def load_data(file_path):
     xls = pd.ExcelFile(file_path)
@@ -21,85 +21,57 @@ def load_data(file_path):
     return df
 
 df = load_data(FILE_NAME)
-df.columns = df.columns.str.strip()
+df.columns = df.columns.str.strip()  # Clean column names
 
-# === Try auto-selecting name and amount columns ===
+# --- Auto-select name and amount columns ---
 text_cols = df.select_dtypes(include='object').columns.tolist()
 num_cols = df.select_dtypes(include='number').columns.tolist()
 
 if not text_cols or not num_cols:
-    st.error("File must contain at least one text (name) and one numeric (amount) column.")
+    st.error("The file must contain at least one text column (like Name) and one number column (like Amount).")
     st.stop()
 
-# Try best guess or fallback to first available
-name_col = "Name" if "Name" in df.columns else text_cols[0]
-amount_col = "Amount" if "Amount" in df.columns else num_cols[0]
+name_col = "NAME" if "NAME" in df.columns else text_cols[0]
+amount_col = "DEPOSIT" if "DEPOSIT" in df.columns else num_cols[0]
 
-#st.info(f"Auto-selected: **Investor = `{name_col}`**, **Amount = `{amount_col}`**")
-
-
-
-# === Clean & Aggregate ===
+# --- Prepare data ---
 df_clean = df[[name_col, amount_col]].dropna()
-df_clean = df_clean[df_clean[name_col].str.strip() != ""]  # Remove blank names
-df_summary = df_clean.groupby(name_col, as_index=False)[amount_col].sum()
-df_summary = df_summary.sort_values(by=amount_col, ascending=False)
+df_clean = df_clean[df_clean[name_col].str.strip() != ""]  # Remove empty names
+df_grouped = df_clean.groupby(name_col, as_index=False)[amount_col].sum()
 
-# === Bar Chart ===
-st.subheader("📈 Total Investment by Investor")
-#fig = px.bar(
-#    df_summary,
-#    x=name_col,
-#    y=amount_col,
-#    title="Total Investment per Person",
-#    labels={name_col: "Investor", amount_col: "Total Invested"},
-#    text_auto=True
-#)
+# Convert to lakhs
+df_grouped["Amount (in Lakhs)"] = df_grouped[amount_col] / 1_00_000
 
-
-# Convert amount to lakhs
-df_summary["Amount (in Lakhs)"] = df_summary[amount_col] / 1_00_000
-
-
-# ➕ Add a "Total" row to the DataFrame
-total_invested_lakh = df_summary["Amount (in Lakhs)"].sum()
+# --- Add Net Total row ---
+total_lakhs = df_grouped["Amount (in Lakhs)"].sum()
 df_total = pd.DataFrame({
-    name_col: ["Total 🧮"],
-    "Amount (in Lakhs)": [total_invested_lakh]
+    name_col: ["🧮 Net Total"],
+    "Amount (in Lakhs)": [total_lakhs]
 })
 
-fig = px.bar(
-    df_summary,
+# Combine data for chart
+df_chart = pd.concat([df_grouped[[name_col, "Amount (in Lakhs)"]], df_total], ignore_index=True)
+
+# --- Plot bar chart ---
+fig_bar = px.bar(
+    df_chart,
     x=name_col,
     y="Amount (in Lakhs)",
     title="Total Investment per Person (in ₹ Lakhs)",
     labels={name_col: "Investor", "Amount (in Lakhs)": "Investment (₹ Lakhs)"},
     text_auto='.2f'
 )
-fig.update_layout(xaxis_tickangle=-45)
+fig_bar.update_layout(xaxis_tickangle=-45)
+fig_bar.update_yaxes(tickprefix="₹", ticksuffix=" L")
 
+# Display chart
+st.plotly_chart(fig_bar, use_container_width=True)
 
-# Combine with original
-df_chart = pd.concat([df_summary[[name_col, "Amount (in Lakhs)"]], df_total], ignore_index=True)
-fig.update_yaxes(tickprefix="₹", ticksuffix=" L")
-
-
-
-
-
-fig.update_layout(xaxis_tickangle=-45)
-st.plotly_chart(fig, use_container_width=True)
-
-
-
-# Show the chart
-st.plotly_chart(fig, use_container_width=True)
-
-# === Show Table (optional) ===
+# --- Optional: Show table ---
 if st.checkbox("📋 Show Table"):
-    st.dataframe(df_summary.reset_index(drop=True))
+    st.dataframe(df_grouped[[name_col, amount_col, "Amount (in Lakhs)"]].sort_values("Amount (in Lakhs)", ascending=False))
 
-# === CSV Download ===
-csv = df_summary.to_csv(index=False).encode('utf-8')
-st.download_button("📥 Download CSV", csv, "investor_summary.csv", "text/csv")
+# --- Optional: Download summary CSV ---
+csv = df_grouped[[name_col, "Amount (in Lakhs)"]].to_csv(index=False).encode("utf-8")
+st.download_button("📥 Download CSV", data=csv, file_name="investment_summary.csv", mime="text/csv")
 
