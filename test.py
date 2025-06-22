@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-import time
 
 st.set_page_config(layout="wide")
 st.title("📈 Interest Payment Tracker (Single Investor)")
@@ -29,54 +28,40 @@ df_months["Status"] = df_months["Amount Paid"].apply(lambda x: "✅ Paid" if x >
 total_interest = monthly_profit * 12
 final_refund = amount_invested
 
-# --- Animated Bar Chart ---
-st.subheader("💸 Monthly Payout Animation (₹ Style Bars)")
+# --- Static Styled Bar Chart ---
+st.subheader("💸 Monthly Payout Overview (₹ Style Bars)")
 
-df_anim = pd.DataFrame({
-    "Month": months,
-    "Amount Paid": [0]*12,
-    "Status": ["⏳ Upcoming"]*12
-})
+fig = px.bar(
+    df_months,
+    x="Month",
+    y="Amount Paid",
+    color="Status",
+    text="Amount Paid",
+    color_discrete_map={"✅ Paid": "#00cc96", "⏳ Upcoming": "#d3d3d3"},
+    title="💸 ₹ Interest Payout Summary"
+)
 
-placeholder = st.empty()
+fig.update_layout(
+    yaxis_tickprefix="₹",
+    yaxis_tickformat=",",
+    xaxis=dict(tickmode='linear'),
+    plot_bgcolor="#f9f9f9",
+    paper_bgcolor="#f0f2f6",
+    font=dict(family="Arial", size=14),
+    bargap=0.3,
+    height=420,
+    showlegend=True
+)
 
-if st.button("▶️ Play Animation"):
-    for i in range(months_paid):
-        df_anim.loc[i, "Amount Paid"] = monthly_profit
-        df_anim.loc[i, "Status"] = "✅ Paid"
+fig.update_traces(
+    texttemplate="₹%{text:.0f}",
+    textposition="outside",
+    marker=dict(
+        line=dict(width=1.5, color='black')
+    )
+)
 
-        fig_anim = px.bar(
-            df_anim,
-            x="Month",
-            y="Amount Paid",
-            color="Status",
-            text="Amount Paid",
-            color_discrete_map={"✅ Paid": "#00cc96", "⏳ Upcoming": "#d3d3d3"},
-            title="💸 Animated ₹ Interest Payout"
-        )
-
-        fig_anim.update_layout(
-            yaxis_tickprefix="₹",
-            yaxis_tickformat=",",
-            xaxis=dict(tickmode='linear'),
-            plot_bgcolor="#f9f9f9",
-            paper_bgcolor="#f0f2f6",
-            font=dict(family="Arial", size=14),
-            bargap=0.3,
-            height=420,
-            showlegend=True
-        )
-
-        fig_anim.update_traces(
-            texttemplate="₹%{text:.0f}",
-            textposition="outside",
-            marker=dict(
-                line=dict(width=1.5, color='black')
-            )
-        )
-
-        placeholder.plotly_chart(fig_anim, use_container_width=True)
-        time.sleep(0.4)
+st.plotly_chart(fig, use_container_width=True)
 
 # --- Summary ---
 st.subheader("💰 Summary")
