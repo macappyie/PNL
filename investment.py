@@ -35,7 +35,18 @@ if not text_cols or not num_cols:
 name_col = "Name" if "Name" in df.columns else text_cols[0]
 amount_col = "Amount" if "Amount" in df.columns else num_cols[0]
 
-st.info(f"Auto-selected: **Investor = `{name_col}`**, **Amount = `{amount_col}`**")
+#st.info(f"Auto-selected: **Investor = `{name_col}`**, **Amount = `{amount_col}`**")
+
+
+st.markdown(f"""
+<div style="background-color: #e8f4fd; padding: 10px 16px; border-radius: 8px; font-size: 16px;">
+✅ <strong>Auto-selected columns:</strong><br>
+👤 <strong>Investor:</strong> <code>{name_col}</code><br>
+💰 <strong>Amount:</strong> <code>{amount_col}</code>
+</div>
+""", unsafe_allow_html=True)
+
+
 
 # === Clean & Aggregate ===
 df_clean = df[[name_col, amount_col]].dropna()
