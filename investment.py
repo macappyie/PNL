@@ -60,6 +60,14 @@ st.subheader("📈 Total Investment by Investor")
 # Convert amount to lakhs
 df_summary["Amount (in Lakhs)"] = df_summary[amount_col] / 1_00_000
 
+
+# ➕ Add a "Total" row to the DataFrame
+total_invested_lakh = df_summary["Amount (in Lakhs)"].sum()
+df_total = pd.DataFrame({
+    name_col: ["Total 🧮"],
+    "Amount (in Lakhs)": [total_invested_lakh]
+})
+
 fig = px.bar(
     df_summary,
     x=name_col,
@@ -71,7 +79,8 @@ fig = px.bar(
 fig.update_layout(xaxis_tickangle=-45)
 
 
-
+# Combine with original
+df_chart = pd.concat([df_summary[[name_col, "Amount (in Lakhs)"]], df_total], ignore_index=True)
 fig.update_yaxes(tickprefix="₹", ticksuffix=" L")
 
 
@@ -79,6 +88,11 @@ fig.update_yaxes(tickprefix="₹", ticksuffix=" L")
 
 
 fig.update_layout(xaxis_tickangle=-45)
+st.plotly_chart(fig, use_container_width=True)
+
+
+
+# Show the chart
 st.plotly_chart(fig, use_container_width=True)
 
 # === Show Table (optional) ===
