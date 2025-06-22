@@ -61,3 +61,16 @@ st.markdown(f"""
 - 🧾 **Final Refund After Lock-In:** ₹{final_refund:,}
 """)
 
+# --- Calculate Final Refund Date ---
+investment_datetime = datetime.strptime(investment_date, "%d-%b-%y")
+final_refund_date = investment_datetime.replace(year=investment_datetime.year + 1)
+refund_str = final_refund_date.strftime("%d-%b-%Y")
+
+# --- Show Refund Date Notice ---
+st.markdown("---")
+st.subheader("🔚 Final Refund Details")
+st.info(f"""
+💰 **₹{final_refund:,}** will be refunded  
+📅 On **{refund_str}** (End of Lock-In Period)
+""")
+
